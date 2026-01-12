@@ -65,7 +65,14 @@ def build_user_content(context, question, image_paths):
     """Build user message content with optional images."""
     content = []
 
-    # Add images first
+    # Add text content first
+    if image_paths:
+        text = f"Course Materials:\n\n{context}\n\n---\n\nI have attached {len(image_paths)} image(s). Please analyze the image(s) carefully and answer: {question}"
+    else:
+        text = f"Course Materials:\n\n{context}\n\n---\n\nQuestion: {question}"
+    content.append({"type": "text", "text": text})
+
+    # Add images after text
     for img_path in image_paths:
         path = Path(img_path)
         if not path.exists():
@@ -78,10 +85,6 @@ def build_user_content(context, question, image_paths):
                 "url": f"data:{get_image_media_type(img_path)};base64,{encode_image(path)}"
             }
         })
-
-    # Add text content
-    text = f"Course Materials:\n\n{context}\n\n---\n\nQuestion: {question}"
-    content.append({"type": "text", "text": text})
 
     return content
 
@@ -96,11 +99,11 @@ def query(client, documents, question, image_paths=None):
     context = "\n\n---\n\n".join(documents)
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful teaching assistant. Answer questions based on the provided course materials and any images. Be concise and accurate.",
+                "content": "You are a helpful teaching assistant. Answer questions based on the provided course materials. When images are provided, you MUST analyze them in detail and describe what you see. Be concise and accurate.",
             },
             {
                 "role": "user",
