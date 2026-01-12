@@ -2,9 +2,11 @@
 Simple RAG System for Course Q&A
 
 Uses OpenAI API directly to read MD files and answer questions.
+Supports image uploads for visual questions.
 """
 
-import os
+import base64
+import re
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -12,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DOCS_DIR = Path("docs")
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 
 def load_documents():
@@ -27,12 +30,69 @@ def load_documents():
     return documents
 
 
-def query(client, documents, question):
-    """Send question with document context to OpenAI."""
+def encode_image(image_path):
+    """Encode image to base64."""
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+
+
+def get_image_media_type(path):
+    """Get media type for image."""
+    suffix = Path(path).suffix.lower()
+    types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+    return types.get(suffix, "image/png")
+
+
+def parse_input(user_input):
+    """Parse input to extract image paths and question.
+
+    Images are specified with @ prefix: @/path/to/image.png
+    Example: @screenshot.png @diagram.jpg What does this show?
+    """
+    pattern = r"@(\S+\.(?:png|jpg|jpeg|gif|webp))"
+    image_paths = re.findall(pattern, user_input, re.IGNORECASE)
+    question = re.sub(pattern, "", user_input, flags=re.IGNORECASE).strip()
+    return image_paths, question
+
+
+def build_user_content(context, question, image_paths):
+    """Build user message content with optional images."""
+    content = []
+
+    # Add images first
+    for img_path in image_paths:
+        path = Path(img_path)
+        if not path.exists():
+            print(f"Warning: Image not found: {img_path}")
+            continue
+
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{get_image_media_type(img_path)};base64,{encode_image(path)}"
+            }
+        })
+
+    # Add text content
+    text = f"Course Materials:\n\n{context}\n\n---\n\nQuestion: {question}"
+    content.append({"type": "text", "text": text})
+
+    return content
+
+
+def query(client, documents, question, image_paths=None):
+    """Send question with document context and optional images to OpenAI."""
     if not documents:
         print("Error: No markdown files found in 'docs/' directory.")
         return
 
+    image_paths = image_paths or []
     context = "\n\n---\n\n".join(documents)
 
     response = client.chat.completions.create(
@@ -40,11 +100,11 @@ def query(client, documents, question):
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful teaching assistant. Answer questions based on the provided course materials. Be concise and accurate.",
+                "content": "You are a helpful teaching assistant. Answer questions based on the provided course materials and any images. Be concise and accurate.",
             },
             {
                 "role": "user",
-                "content": f"Course Materials:\n\n{context}\n\n---\n\nQuestion: {question}",
+                "content": build_user_content(context, question, image_paths),
             },
         ],
         stream=True,
@@ -65,29 +125,39 @@ def main():
     print(f"Loaded {len(documents)} document(s) from 'docs/'")
     print("\n" + "=" * 50)
     print("Course Q&A System Ready!")
-    print("Type 'quit' to exit, 'reload' to reload documents.")
+    print("To attach images: @path/to/image.png your question")
+    print("Commands: 'reload', 'quit'")
     print("=" * 50 + "\n")
 
     while True:
         try:
-            question = input("Q: ").strip()
+            user_input = input("Q: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
 
-        if not question:
+        if not user_input:
             continue
 
-        if question.lower() in ("quit", "exit"):
+        if user_input.lower() in ("quit", "exit"):
             print("Goodbye!")
             break
 
-        if question.lower() == "reload":
+        if user_input.lower() == "reload":
             documents = load_documents()
             print(f"Reloaded {len(documents)} document(s).\n")
             continue
 
-        query(client, documents, question)
+        image_paths, question = parse_input(user_input)
+
+        if not question:
+            print("Please enter a question.\n")
+            continue
+
+        if image_paths:
+            print(f"Attached {len(image_paths)} image(s)")
+
+        query(client, documents, question, image_paths)
 
 
 if __name__ == "__main__":
