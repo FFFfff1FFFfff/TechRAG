@@ -61,3 +61,7 @@ TechRAG/
 ├── docs/             # Place markdown files here
 └── .env              # Environment variables (optional)
 ```
+
+## Result - 0112
+![result](res.png)
+
