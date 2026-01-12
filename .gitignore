@@ -1,9 +1,6 @@
 # Environment
 .env
 
-# Index storage
-storage/
-
 # Python
 __pycache__/
 *.py[cod]

@@ -1,13 +1,6 @@
 # TechRAG - Course Q&A System
 
-A simple RAG (Retrieval-Augmented Generation) system built with LlamaIndex for indexing course slides and answering questions about homework and course content.
-
-## Features
-
-- Index PDF course slides
-- Interactive Q&A interface
-- Persistent index storage
-- Free local embeddings (HuggingFace)
+A simple RAG system using OpenAI API to answer questions based on course markdown files.
 
 ## Setup
 
@@ -17,17 +10,21 @@ A simple RAG (Retrieval-Augmented Generation) system built with LlamaIndex for i
 pip install -r requirements.txt
 ```
 
-2. Create a `.env` file with your OpenAI API key:
+2. Set your OpenAI API key:
 
 ```bash
+export OPENAI_API_KEY=your_api_key_here
+```
+
+Or create a `.env` file:
+
+```
 OPENAI_API_KEY=your_api_key_here
 ```
 
-3. Add your course PDF files to the `data/` directory.
+3. Add your course markdown files to the `docs/` directory.
 
 ## Usage
-
-Run the application:
 
 ```bash
 python main.py
@@ -36,8 +33,8 @@ python main.py
 ### Commands
 
 - Type any question to query the course content
-- `rebuild` - Rebuild the index after adding new documents
-- `quit` or `exit` - Exit the application
+- `reload` - Reload documents after adding new files
+- `quit` - Exit the application
 
 ## Project Structure
 
@@ -45,12 +42,6 @@ python main.py
 TechRAG/
 ├── main.py           # Main application
 ├── requirements.txt  # Dependencies
-├── data/             # Place PDF files here
-├── storage/          # Index storage (auto-generated)
-└── .env              # Environment variables
+├── docs/             # Place markdown files here
+└── .env              # Environment variables (optional)
 ```
-
-## Notes
-
-- The index is automatically saved to `storage/` and reused on subsequent runs
-- To update the index after adding new PDFs, use the `rebuild` command
