@@ -135,10 +135,15 @@ def main():
 
     while True:
         try:
-            user_input = input("Q: ").strip()
+            print("Q: ", end="", flush=True)
+            user_input = input().strip()
         except (EOFError, KeyboardInterrupt):
             print("\nGoodbye!")
             break
+
+        # Debug: show what was received
+        if len(user_input) < 20:
+            print(f"[DEBUG] Received: '{user_input}' (len={len(user_input)})")
 
         if not user_input:
             continue
