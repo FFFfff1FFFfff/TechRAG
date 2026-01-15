@@ -3,6 +3,7 @@ Simple RAG System for Course Q&A
 
 Uses OpenAI API directly to read MD files and answer questions.
 Supports image uploads for visual questions.
+Uses Socratic method to guide students through problems.
 """
 
 import base64
@@ -14,7 +15,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DOCS_DIR = Path("docs")
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+SYSTEM_PROMPT = """You are a Socratic teaching assistant. Your goal is to help students learn by guiding them to discover answers themselves.
+
+When a student asks a question or shows their work:
+
+1. FIRST, analyze what they've done (especially any images they share)
+2. If there's an error or misunderstanding:
+   - Do NOT immediately give the correct answer
+   - Ask guiding questions to help them identify the issue
+   - Give hints that lead them toward the solution
+   - Only after 2-3 exchanges of guidance, provide the full explanation
+3. If they're correct, confirm and explain why
+
+Use the course materials provided as reference. When analyzing images, describe what you observe in detail.
+
+Keep responses concise but educational. Remember: guide first, answer later."""
 
 
 def load_documents():
@@ -50,29 +66,17 @@ def get_image_media_type(path):
 
 
 def parse_input(user_input):
-    """Parse input to extract image paths and question.
-
-    Images are specified with @ prefix: @/path/to/image.png
-    Example: @screenshot.png @diagram.jpg What does this show?
-    """
+    """Parse input to extract image paths and question."""
     pattern = r"@(\S+\.(?:png|jpg|jpeg|gif|webp))"
     image_paths = re.findall(pattern, user_input, re.IGNORECASE)
     question = re.sub(pattern, "", user_input, flags=re.IGNORECASE).strip()
     return image_paths, question
 
 
-def build_user_content(context, question, image_paths):
+def build_user_content(question, image_paths):
     """Build user message content with optional images."""
-    content = []
+    content = [{"type": "text", "text": question}]
 
-    # Add text content first
-    if image_paths:
-        text = f"Course Materials:\n\n{context}\n\n---\n\nI have attached {len(image_paths)} image(s). Please analyze the image(s) carefully and answer: {question}"
-    else:
-        text = f"Course Materials:\n\n{context}\n\n---\n\nQuestion: {question}"
-    content.append({"type": "text", "text": text})
-
-    # Add images after text
     for img_path in image_paths:
         path = Path(img_path)
         if not path.exists():
@@ -89,47 +93,40 @@ def build_user_content(context, question, image_paths):
     return content
 
 
-def query(client, documents, question, image_paths=None):
-    """Send question with document context and optional images to OpenAI."""
-    if not documents:
-        print("Error: No markdown files found in 'docs/' directory.")
-        return
-
-    image_paths = image_paths or []
-    context = "\n\n---\n\n".join(documents)
-
+def query(client, messages):
+    """Send messages to OpenAI and return response."""
     response = client.chat.completions.create(
         model="gpt-4o",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful teaching assistant. Answer questions based on the provided course materials. When images are provided, you MUST analyze them in detail and describe what you see. Be concise and accurate.",
-            },
-            {
-                "role": "user",
-                "content": build_user_content(context, question, image_paths),
-            },
-        ],
+        messages=messages,
         stream=True,
     )
 
     print("\nA: ", end="", flush=True)
+    full_response = []
     for chunk in response:
         if chunk.choices[0].delta.content:
-            print(chunk.choices[0].delta.content, end="", flush=True)
+            text = chunk.choices[0].delta.content
+            print(text, end="", flush=True)
+            full_response.append(text)
     print("\n")
+
+    return "".join(full_response)
 
 
 def main():
     """Main entry point."""
     client = OpenAI()
     documents = load_documents()
+    context = "\n\n---\n\n".join(documents)
+
+    # Conversation history
+    history = []
 
     print(f"Loaded {len(documents)} document(s) from 'docs/'")
     print("\n" + "=" * 50)
-    print("Course Q&A System Ready!")
-    print("To attach images: @path/to/image.png your question")
-    print("Commands: 'reload', 'quit'")
+    print("Course Q&A System (Socratic Mode)")
+    print("Commands: 'new' (new topic), 'reload', 'quit'")
+    print("Attach images: @path/to/image.png")
     print("=" * 50 + "\n")
 
     while True:
@@ -148,7 +145,13 @@ def main():
 
         if user_input.lower() == "reload":
             documents = load_documents()
+            context = "\n\n---\n\n".join(documents)
             print(f"Reloaded {len(documents)} document(s).\n")
+            continue
+
+        if user_input.lower() == "new":
+            history = []
+            print("Started new conversation.\n")
             continue
 
         image_paths, question = parse_input(user_input)
@@ -160,7 +163,26 @@ def main():
         if image_paths:
             print(f"Attached {len(image_paths)} image(s)")
 
-        query(client, documents, question, image_paths)
+        # Build messages with history
+        messages = [
+            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCourse Materials:\n{context}"},
+        ]
+        messages.extend(history)
+        messages.append({
+            "role": "user",
+            "content": build_user_content(question, image_paths),
+        })
+
+        # Get response and update history
+        response = query(client, messages)
+
+        # Save to history (text only for user, to avoid re-sending images)
+        history.append({"role": "user", "content": question})
+        history.append({"role": "assistant", "content": response})
+
+        # Keep history reasonable (last 10 exchanges)
+        if len(history) > 20:
+            history = history[-20:]
 
 
 if __name__ == "__main__":
