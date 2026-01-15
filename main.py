@@ -8,6 +8,7 @@ Uses Socratic method to guide students through problems.
 
 import base64
 import re
+import sys
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -95,22 +96,18 @@ def build_user_content(question, image_paths):
 
 def query(client, messages):
     """Send messages to OpenAI and return response."""
+    # Use non-streaming to avoid terminal input buffer issues
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=messages,
-        stream=True,
+        stream=False,
     )
 
-    print("\nA: ", end="", flush=True)
-    full_response = []
-    for chunk in response:
-        if chunk.choices[0].delta.content:
-            text = chunk.choices[0].delta.content
-            print(text, end="", flush=True)
-            full_response.append(text)
-    print("\n")
+    result = response.choices[0].message.content
+    print(f"\nA: {result}\n")
+    sys.stdout.flush()
 
-    return "".join(full_response)
+    return result
 
 
 def main():
