@@ -125,8 +125,12 @@ def main():
     print(f"Loaded {len(documents)} document(s) from 'docs/'")
     print("\n" + "=" * 50)
     print("Course Q&A System (Socratic Mode)")
-    print("Commands: 'new' (new topic), 'reload', 'quit'")
-    print("Attach images: @path/to/image.png")
+    print("Commands:")
+    print("  new    - Start new conversation")
+    print("  answer <question> - Get direct answer (skip guidance)")
+    print("  reload - Reload documents")
+    print("  quit   - Exit")
+    print("Attach images: @path/to/image.png your question")
     print("=" * 50 + "\n")
 
     while True:
@@ -154,18 +158,31 @@ def main():
             print("Started new conversation.\n")
             continue
 
+        # Direct answer mode - skip Socratic guidance
+        direct_mode = False
+        if user_input.lower().startswith("answer "):
+            user_input = user_input[7:]  # Remove "answer " prefix
+            direct_mode = True
+
         image_paths, question = parse_input(user_input)
 
-        if not question:
-            print("Please enter a question.\n")
+        # Skip if no actual question text (must have at least 2 chars)
+        if not question or len(question.strip()) < 2:
+            if image_paths:
+                print("Please enter a question along with the image.\n")
             continue
 
         if image_paths:
             print(f"Attached {len(image_paths)} image(s)")
 
         # Build messages with history
+        if direct_mode:
+            system_content = f"You are a helpful teaching assistant. Answer the question directly and concisely based on the course materials. Analyze any images in detail.\n\nCourse Materials:\n{context}"
+        else:
+            system_content = f"{SYSTEM_PROMPT}\n\nCourse Materials:\n{context}"
+
         messages = [
-            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCourse Materials:\n{context}"},
+            {"role": "system", "content": system_content},
         ]
         messages.extend(history)
         messages.append({
